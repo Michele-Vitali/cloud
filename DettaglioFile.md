@@ -1,11 +1,18 @@
 **numero righe**
+
 details.csv            7384
+
 final_list.csv         7969
+
 images.csv             14196
+
 related_videos.csv     37727
+
 tags.csv               49220
 
+
 **colonne per file**
+
 *details.csv (metadati principali)*
 
   -  id: Identificativo univoco del video (es: 567505)
@@ -50,6 +57,7 @@ tags.csv               49220
    - tag: Singola parola chiave/categoria (es: "culture", "AI", "science") - ogni video ha multipli tag su righe diverse
 
 **Come è fatto il nostro MongoDB**
+
 Il database ted_video_db_3 contiene la collection videos con ~7100 documenti JSON, uno per ogni video TED. Ogni documento include i metadati di base (titolo, descrizione, speaker, durata, url) più tre array nidificati: tags (lista di categorie), images (oggetti con url delle thumbnail), e related_videos (oggetti con dati dei video correlati).
 Lo schema è denormalizzato: abbiamo aggregato le 5 tabelle relazionali (details, final_list, tags, images, related_videos) in un singolo documento per video, evitando il cartesian product dei join multipli. Questo riduce lo storage da oltre 500MB (con duplicazioni) a circa 3MB, rispettando il limite del piano free di MongoDB Atlas (512MB) e ottimizzando le query per lettura.
 I dati vengono aggiornati sovrascrivendo l'intera collection tramite AWS Glue job PySpark, garantendo coerenza completa ad ogni run.
