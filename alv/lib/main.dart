@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 void main() {
   runApp(const MyApp());
@@ -43,8 +45,26 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         _messaggioRisultato = "Hai scritto: '$parolaInserita'.\n\nIn attesa dell'API Gateway di Vitali...";
       });
 
-      // TODO: Qui in futuro aggiungeremo la chiamata HTTP all'API di Vitali
-      // per passargli 'parolaInserita' e ricevere i titoli dei video.
+      /*
+      * Esistono 3 type per ora:
+      * - all, una ricerca della stringa ra un po tutti i campi del video
+      * - speaker, cerca la stringa nell'attributo speaker
+      * - title, cerca la stringa nell'attributo title
+      */
+      String type = "all"; 
+      String parameter = parolaInserita;
+      final api_url = "https://9ax7s2e799.execute-api.us-east-1.amazonaws.com/dev/search/${type}?q=${parameter}&limit={5}";
+    
+      final response = http.get(Uri.parse(api_url));
+
+      if(response. == 200){
+        final data = json.decode(response.body);
+        final res = data['body'];
+
+        for(var i=0; i < res.length; i++){
+          print("[${i+1}] Titolo: ${res['title']}");
+        }
+      }
     } else {
       setState(() {
         _messaggioRisultato = "Per favore, inserisci una parola!";
