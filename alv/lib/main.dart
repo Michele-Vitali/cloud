@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:intl/intl.dart' as intl;
 
 void main() {
   runApp(const MyApp());
@@ -30,49 +31,304 @@ class SchermataRicerca extends StatefulWidget {
 }
 
 class _SchermataRicercaState extends State<SchermataRicerca> {
-  // Questo controller ci permette di leggere cosa scrive l'utente nella casella
   final TextEditingController _controllerTesto = TextEditingController();
   
-  // Variabile per mostrare a schermo cosa sta succedendo
-  String _messaggioRisultato = "Digita una parola per cercare i video";
+  bool _isLoading = false;
+  List<dynamic> _videos = [];
+  String _errorMessage = '';
+  bool _hasSearched = false;
 
-  // Funzione che viene chiamata quando premi il bottone
-  void _inviaParola() {
-    String parolaInserita = _controllerTesto.text;
-
-    if (parolaInserita.isNotEmpty) {
-      setState(() {
-        _messaggioRisultato = "Hai scritto: '$parolaInserita'.\n\nIn attesa dell'API Gateway di Vitali...";
-      });
-
-      /*
-      * Esistono 3 type per ora:
-      * - all, una ricerca della stringa ra un po tutti i campi del video
-      * - speaker, cerca la stringa nell'attributo speaker
-      * - title, cerca la stringa nell'attributo title
-      */
-      String type = "all"; 
-      String parameter = parolaInserita;
-      final api_url = "https://9ax7s2e799.execute-api.us-east-1.amazonaws.com/dev/search/${type}?q=${parameter}&limit={5}";
-    
-      final response = http.get(Uri.parse(api_url));
-
-      if(response. == 200){
-        final data = json.decode(response.body);
-        final res = data['body'];
-
-        for(var i=0; i < res.length; i++){
-          print("[${i+1}] Titolo: ${res['title']}");
-        }
+  String _formatData(String dataString) {
+    try {
+      final dateOnly = dataString.split('T')[0];
+      final parts = dateOnly.split('-');
+      
+      if (parts.length == 3) {
+        int year = int.parse(parts[0]);
+        int month = int.parse(parts[1]);
+        int day = int.parse(parts[2]);
+        
+        const months = [
+          'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+          'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
+        ];
+        
+        return '$day ${months[month - 1]} $year';
       }
-    } else {
+      
+      return 'Data non disponibile';
+    } catch (e) {
+      print('Errore formato data: $dataString -> $e');
+      return 'Data non disponibile';
+    }
+  }
+
+  String _formatDuration(int secDuration) {
+    int hours = (secDuration / 3600).floor();
+    int minutes = ((secDuration % 3600) / 60).floor();
+    int seconds = secDuration % 60;
+
+    String formattedDuration = "";
+    if (hours > 0) {
+      formattedDuration += "$hours ";
+      formattedDuration += hours > 1 ? "ore " : "ora ";
+    }
+    if (minutes > 0) {
+      formattedDuration += "$minutes ";
+      formattedDuration += minutes > 1 ? "minuti " : "minuto ";
+    }
+    if (seconds > 0 && hours == 0) {
+      formattedDuration += "$seconds ";
+      formattedDuration += seconds > 1 ? "secondi" : "secondo";
+    }
+    
+    return formattedDuration.trim();
+  }
+
+  Widget _buildTagContainer(String tag) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      margin: const EdgeInsets.only(right: 6, bottom: 4),
+      decoration: BoxDecoration(
+        color: Colors.blue[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue[100]!),
+      ),
+      child: Text(
+        tag[0].toUpperCase() + tag.substring(1),
+        style: TextStyle(fontSize: 11, color: Colors.blue[800], fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+
+  String _getSafeString(Map<String, dynamic> map, String key, {String defaultValue = ''}) {
+    final value = map[key];
+    if (value == null) return defaultValue;
+    if (value is String) return value;
+    if (value is int) return value.toString();
+    if (value is double) return value.toString();
+    if (value is bool) return value.toString();
+    return defaultValue;
+  }
+
+  // Funzione per estrarre il valore intero in modo sicuro
+  int _getSafeInt(Map<String, dynamic> map, String key, {int defaultValue = 0}) {
+    final value = map[key];
+    if (value == null) return defaultValue;
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? defaultValue;
+    return defaultValue;
+  }
+
+  // Funzione per estrarre la lista in modo sicuro
+  List<dynamic> _getSafeList(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return [];
+    if (value is List) return value;
+    return [];
+  }
+
+  Widget _buildVideoCard(Map<String, dynamic> video) {
+    // Gestione thumbnail in modo sicuro
+    String thumbnailUrl = video['images'][0]['url'];
+
+    // Estrai i campi in modo sicuro
+    final title = _getSafeString(video, 'title', defaultValue: 'Titolo non disponibile');
+    final speakers = _getSafeString(video, 'speakers', defaultValue: 'Speaker non disponibile');
+    final presenterDisplayName = _getSafeString(video, 'presenterdisplayname', defaultValue: '');
+    final description = _getSafeString(video, 'description', defaultValue: 'Descrizione non disponibile');
+    final publishedAt = _getSafeString(video, 'publishedat', defaultValue: '');
+    final videoUrl = _getSafeString(video, 'url', defaultValue: '');
+    final duration = _getSafeInt(video, 'duration', defaultValue: 0);
+    final tagsList = _getSafeList(video, 'tags');
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: InkWell(
+        onTap: () {
+          if (videoUrl.isNotEmpty) {
+            print('Apri video: $videoUrl');
+          }
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Thumbnail
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: thumbnailUrl.isNotEmpty
+                    ? Image.network(
+                        thumbnailUrl,
+                        width: 120,
+                        height: 68,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            width: 120,
+                            height: 68,
+                            color: Colors.grey[200],
+                            child: const Center(
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (_, _, _) => Container(
+                          width: 120,
+                          height: 68,
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.video_library, color: Colors.grey, size: 32),
+                        ),
+                      )
+                    : Container(
+                        width: 120,
+                        height: 68,
+                        color: Colors.grey[300],
+                        child: const Icon(Icons.video_library, color: Colors.grey, size: 32),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              
+              // Contenuto testuale
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Titolo
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    
+                    // Speaker e durata
+                    Row(
+                      children: [
+                        Icon(Icons.person, size: 12, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            speakers.isNotEmpty ? speakers : presenterDisplayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Icon(Icons.schedule, size: 12, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          _formatDuration(duration),
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    
+                    // Data pubblicazione
+                    if (publishedAt.isNotEmpty)
+                      Row(
+                        children: [
+                          Icon(Icons.calendar_today, size: 12, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatData(publishedAt),
+                            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 6),
+                    
+                    // Descrizione
+                    Text(
+                      description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                    ),
+                    const SizedBox(height: 8),
+                    
+                    // Tags
+                    if (tagsList.isNotEmpty)
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: tagsList
+                            .take(5)
+                            .map((tag) => _buildTagContainer(tag.toString()))
+                            .toList(),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _callApi(String searchString) async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+      _videos = [];
+      _hasSearched = true;
+    });
+
+    try {
+      String type = "all";
+      final apiUrl = "https://9ax7s2e799.execute-api.us-east-1.amazonaws.com/dev/search/$type?q=${Uri.encodeComponent(searchString)}&limit=10";
+      
+      final response = await http.get(Uri.parse(apiUrl)).timeout(
+        const Duration(seconds: 30),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(response.body);
+        setState(() {
+          _videos = data['results'] ?? [];
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _errorMessage = "Errore: ${response.statusCode} - ${response.reasonPhrase}";
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
       setState(() {
-        _messaggioRisultato = "Per favore, inserisci una parola!";
+        _errorMessage = "Errore di connessione: $e";
+        _isLoading = false;
       });
     }
   }
 
-  // È buona norma "pulire" il controller quando la schermata viene chiusa
+  void _inviaParola() {
+    String parolaInserita = _controllerTesto.text.trim();
+    if (parolaInserita.isNotEmpty) {
+      _callApi(parolaInserita);
+    } else {
+      setState(() {
+        _errorMessage = "Per favore, inserisci una parola da cercare!";
+        _hasSearched = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _controllerTesto.dispose();
@@ -86,42 +342,114 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         title: const Text('App di ALV (Algeri Locatelli, Vitali)'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
+      body: Column(
+        children: [
+          // Barra di ricerca
+          Padding(
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _controllerTesto,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    labelText: 'Inserisci titolo, speaker o qualcosa per cercare',
+                    hintText: 'Es. Species',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onSubmitted: (_) => _inviaParola(),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: _inviaParola,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                  ),
+                  child: const Text('Cerca Video', style: TextStyle(fontSize: 16)),
+                ),
+              ],
+            ),
+          ),
+          
+          // Contenuto principale
+          Expanded(
+            child: _buildContent(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_isLoading) {
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // La casella di testo
-            TextField(
-              controller: _controllerTesto,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                labelText: 'Cerca parola chiave',
-                hintText: 'Es: Flutter, MongoDB, Lambda...',
-                prefixIcon: Icon(Icons.search),
-              ),
-            ),
-            const SizedBox(height: 20), // Spazio tra casella e bottone
-            
-            // Il bottone per inviare
-            ElevatedButton(
-              onPressed: _inviaParola,
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-              ),
-              child: const Text('Cerca Video', style: TextStyle(fontSize: 16)),
-            ),
-            const SizedBox(height: 40), // Spazio tra bottone e risultato
-            
-            // Testo che mostra il risultato o lo stato attuale
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Caricamento video in corso...'),
+          ],
+        ),
+      );
+    }
+    
+    if (_errorMessage.isNotEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const SizedBox(height: 16),
             Text(
-              _messaggioRisultato,
+              _errorMessage,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 16, color: Colors.red),
             ),
           ],
         ),
-      ),
+      );
+    }
+    
+    if (!_hasSearched) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search, size: 48, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'Digita una parola per cercare i video',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    if (_videos.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.video_library, size: 48, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              'Nessun video trovato',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return ListView.builder(
+      itemCount: _videos.length,
+      itemBuilder: (context, index) {
+        return _buildVideoCard(_videos[index]);
+      },
     );
   }
 }

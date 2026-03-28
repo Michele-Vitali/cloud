@@ -56,10 +56,12 @@ def lambda_handler(event, context):
                     'title': 1,
                     'description': 1,
                     'speakers': 1,
+                    'presenterdisplayname': 1,
+                    'url': 1,
                     'tags': 1,
-                    'video_url': 1,
-                    'thumbnail_url': 1,
                     'duration': 1,
+                    'publishedat': 1,
+                    'images': 1,
                     'score': {'$meta': 'searchScore'}
                 }
             },
