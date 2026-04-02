@@ -72,7 +72,7 @@ df.write \
     .format("mongodb") \
     .option("spark.mongodb.write.connection.uri",
             "mongodb+srv://ted_user:ICxk4Gv2fRmTFzq5@cluster0.yxb8l1z.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0") \
-    .option("spark.mongodb.write.database", "ted_video_db_1") \
+    .option("spark.mongodb.write.database", "ted_video_db") \
     .option("spark.mongodb.write.collection", "videos") \
     .option("spark.mongodb.write.maxBatchSize", "1000") \
     .option("spark.mongodb.write.ordered", "false") \
