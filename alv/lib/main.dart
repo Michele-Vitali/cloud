@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:intl/intl.dart' as intl;
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'login_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'preferiti_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
@@ -18,7 +25,17 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      home: const SchermataRicerca(),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          // Se l'utente è loggato, mostra la schermata di ricerca
+          if (snapshot.hasData) {
+            return const SchermataRicerca();
+          }
+          // Altrimenti, mostra la schermata di login
+          return LoginScreen();
+        },
+      ),
     );
   }
 }
@@ -32,34 +49,125 @@ class SchermataRicerca extends StatefulWidget {
 
 class _SchermataRicercaState extends State<SchermataRicerca> {
   final TextEditingController _controllerTesto = TextEditingController();
-  
+
   bool _isLoading = false;
   List<dynamic> _videos = [];
   String _errorMessage = '';
   bool _hasSearched = false;
+  Set<String> _preferitiIds = {};
 
   String _formatData(String dataString) {
     try {
       final dateOnly = dataString.split('T')[0];
       final parts = dateOnly.split('-');
-      
+
       if (parts.length == 3) {
         int year = int.parse(parts[0]);
         int month = int.parse(parts[1]);
         int day = int.parse(parts[2]);
-        
+
         const months = [
-          'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-          'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
+          'Gennaio',
+          'Febbraio',
+          'Marzo',
+          'Aprile',
+          'Maggio',
+          'Giugno',
+          'Luglio',
+          'Agosto',
+          'Settembre',
+          'Ottobre',
+          'Novembre',
+          'Dicembre',
         ];
-        
+
         return '$day ${months[month - 1]} $year';
       }
-      
+
       return 'Data non disponibile';
     } catch (e) {
       print('Errore formato data: $dataString -> $e');
       return 'Data non disponibile';
+    }
+  }
+
+  Future<void> _aggiungiPreferito(Map<String, dynamic> video) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Genera ID una volta sola
+    final title = video['title']?.toString() ?? 'video';
+    final duration = video['duration']?.toString() ?? '0';
+    final videoId =
+        "${title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_$duration";
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('utenti')
+          .doc(user.uid)
+          .collection('preferiti')
+          .doc(videoId)
+          .set({
+            'title': video['title'] ?? 'Titolo non disponibile',
+            'speakers': video['speakers'] ?? 'Speaker non disponibile',
+            'thumbnailUrl': video['images']?[0]?['url'] ?? '',
+            'duration': video['duration'] ?? 0,
+            'url': video['url'] ?? '',
+            'savedAt': DateTime.now(),
+          });
+
+      setState(() {
+        _preferitiIds.add(videoId);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Aggiunto ai preferiti!')));
+      }
+    } catch (e) {
+      print('Errore salvataggio: $e');
+    }
+  }
+
+  bool _isPreferito(Map<String, dynamic> video) {
+    final title = video['title']?.toString() ?? 'video';
+    final duration = video['duration']?.toString() ?? '0';
+    final videoId =
+        "${title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_$duration";
+    return _preferitiIds.contains(videoId);
+  }
+
+  Future<void> _rimuoviPreferito(Map<String, dynamic> video) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Usa lo stesso metodo per generare l'ID
+    final title = video['title']?.toString() ?? 'video';
+    final duration = video['duration']?.toString() ?? '0';
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    final videoId =
+        "${title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_$duration$timestamp";
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('utenti')
+          .doc(user.uid)
+          .collection('preferiti')
+          .doc(videoId)
+          .delete();
+
+      setState(() {
+        _preferitiIds.remove(videoId);
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Rimosso dai preferiti!')));
+      }
+    } catch (e) {
+      print('Errore rimozione: $e');
     }
   }
 
@@ -81,7 +189,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       formattedDuration += "$seconds ";
       formattedDuration += seconds > 1 ? "secondi" : "secondo";
     }
-    
+
     return formattedDuration.trim();
   }
 
@@ -96,12 +204,20 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       ),
       child: Text(
         tag[0].toUpperCase() + tag.substring(1),
-        style: TextStyle(fontSize: 11, color: Colors.blue[800], fontWeight: FontWeight.w500),
+        style: TextStyle(
+          fontSize: 11,
+          color: Colors.blue[800],
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
 
-  String _getSafeString(Map<String, dynamic> map, String key, {String defaultValue = ''}) {
+  String _getSafeString(
+    Map<String, dynamic> map,
+    String key, {
+    String defaultValue = '',
+  }) {
     final value = map[key];
     if (value == null) return defaultValue;
     if (value is String) return value;
@@ -112,7 +228,11 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   }
 
   // Funzione per estrarre il valore intero in modo sicuro
-  int _getSafeInt(Map<String, dynamic> map, String key, {int defaultValue = 0}) {
+  int _getSafeInt(
+    Map<String, dynamic> map,
+    String key, {
+    int defaultValue = 0,
+  }) {
     final value = map[key];
     if (value == null) return defaultValue;
     if (value is int) return value;
@@ -134,10 +254,26 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     String thumbnailUrl = video['images'][0]['url'];
 
     // Estrai i campi in modo sicuro
-    final title = _getSafeString(video, 'title', defaultValue: 'Titolo non disponibile');
-    final speakers = _getSafeString(video, 'speakers', defaultValue: 'Speaker non disponibile');
-    final presenterDisplayName = _getSafeString(video, 'presenterdisplayname', defaultValue: '');
-    final description = _getSafeString(video, 'description', defaultValue: 'Descrizione non disponibile');
+    final title = _getSafeString(
+      video,
+      'title',
+      defaultValue: 'Titolo non disponibile',
+    );
+    final speakers = _getSafeString(
+      video,
+      'speakers',
+      defaultValue: 'Speaker non disponibile',
+    );
+    final presenterDisplayName = _getSafeString(
+      video,
+      'presenterdisplayname',
+      defaultValue: '',
+    );
+    final description = _getSafeString(
+      video,
+      'description',
+      defaultValue: 'Descrizione non disponibile',
+    );
     final publishedAt = _getSafeString(video, 'publishedat', defaultValue: '');
     final videoUrl = _getSafeString(video, 'url', defaultValue: '');
     final duration = _getSafeInt(video, 'duration', defaultValue: 0);
@@ -176,7 +312,9 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                               child: SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                             ),
                           );
@@ -185,18 +323,26 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                           width: 120,
                           height: 68,
                           color: Colors.grey[300],
-                          child: const Icon(Icons.video_library, color: Colors.grey, size: 32),
+                          child: const Icon(
+                            Icons.video_library,
+                            color: Colors.grey,
+                            size: 32,
+                          ),
                         ),
                       )
                     : Container(
                         width: 120,
                         height: 68,
                         color: Colors.grey[300],
-                        child: const Icon(Icons.video_library, color: Colors.grey, size: 32),
+                        child: const Icon(
+                          Icons.video_library,
+                          color: Colors.grey,
+                          size: 32,
+                        ),
                       ),
               ),
               const SizedBox(width: 12),
-              
+
               // Contenuto testuale
               Expanded(
                 child: Column(
@@ -213,7 +359,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    
+
                     // Speaker e durata
                     Row(
                       children: [
@@ -221,10 +367,15 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            speakers.isNotEmpty ? speakers : presenterDisplayName,
+                            speakers.isNotEmpty
+                                ? speakers
+                                : presenterDisplayName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -232,26 +383,36 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                         const SizedBox(width: 4),
                         Text(
                           _formatDuration(duration),
-                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 4),
-                    
+
                     // Data pubblicazione
                     if (publishedAt.isNotEmpty)
                       Row(
                         children: [
-                          Icon(Icons.calendar_today, size: 12, color: Colors.grey[500]),
+                          Icon(
+                            Icons.calendar_today,
+                            size: 12,
+                            color: Colors.grey[500],
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             _formatData(publishedAt),
-                            style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[500],
+                            ),
                           ),
                         ],
                       ),
                     const SizedBox(height: 6),
-                    
+
                     // Descrizione
                     Text(
                       description,
@@ -260,7 +421,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       style: TextStyle(fontSize: 12, color: Colors.grey[700]),
                     ),
                     const SizedBox(height: 8),
-                    
+
                     // Tags
                     if (tagsList.isNotEmpty)
                       Wrap(
@@ -271,6 +432,29 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                             .map((tag) => _buildTagContainer(tag.toString()))
                             .toList(),
                       ),
+                    // Bottone preferiti
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            if (_isPreferito(video)) {
+                              _rimuoviPreferito(video);
+                            } else {
+                              _aggiungiPreferito(video);
+                            }
+                          },
+                          icon: Icon(
+                            _isPreferito(video)
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: _isPreferito(video)
+                                ? Colors.red
+                                : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -291,11 +475,12 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
     try {
       String type = "all";
-      final apiUrl = "https://9ax7s2e799.execute-api.us-east-1.amazonaws.com/dev/search/$type?q=${Uri.encodeComponent(searchString)}&limit=10";
-      
-      final response = await http.get(Uri.parse(apiUrl)).timeout(
-        const Duration(seconds: 30),
-      );
+      final apiUrl =
+          "https://9ax7s2e799.execute-api.us-east-1.amazonaws.com/dev/search/$type?q=${Uri.encodeComponent(searchString)}&limit=10";
+
+      final response = await http
+          .get(Uri.parse(apiUrl))
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
@@ -305,7 +490,8 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         });
       } else {
         setState(() {
-          _errorMessage = "Errore: ${response.statusCode} - ${response.reasonPhrase}";
+          _errorMessage =
+              "Errore: ${response.statusCode} - ${response.reasonPhrase}";
           _isLoading = false;
         });
       }
@@ -329,6 +515,25 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     }
   }
 
+  Future<void> _caricaPreferiti() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('utenti')
+          .doc(user.uid)
+          .collection('preferiti')
+          .get();
+
+      setState(() {
+        _preferitiIds = doc.docs.map((d) => d.id).toSet();
+      });
+    } catch (e) {
+      print('Errore caricamento preferiti: $e');
+    }
+  }
+
   @override
   void dispose() {
     _controllerTesto.dispose();
@@ -337,10 +542,43 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _caricaPreferiti();
+    });
     return Scaffold(
       appBar: AppBar(
-        title: const Text('App di ALV (Algeri Locatelli, Vitali)'),
+        title: const Text('FOCUS-TED'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          // Mostra l'email dell'utente
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Center(
+              child: Text(
+                FirebaseAuth.instance.currentUser?.email ?? '',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ),
+          // Bottone per il logout
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+            },
+            tooltip: 'Logout',
+          ),
+          IconButton(
+            icon: const Icon(Icons.favorite),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PreferitiScreen()),
+              );
+            },
+            tooltip: 'Preferiti',
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -353,7 +591,8 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                   controller: _controllerTesto,
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
-                    labelText: 'Inserisci titolo, speaker o qualcosa per cercare',
+                    labelText:
+                        'Inserisci titolo, speaker o qualcosa per cercare',
                     hintText: 'Es. Species',
                     prefixIcon: Icon(Icons.search),
                   ),
@@ -363,18 +602,22 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                 ElevatedButton(
                   onPressed: _inviaParola,
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 30,
+                      vertical: 15,
+                    ),
                   ),
-                  child: const Text('Cerca Video', style: TextStyle(fontSize: 16)),
+                  child: const Text(
+                    'Cerca Video',
+                    style: TextStyle(fontSize: 16),
+                  ),
                 ),
               ],
             ),
           ),
-          
+
           // Contenuto principale
-          Expanded(
-            child: _buildContent(),
-          ),
+          Expanded(child: _buildContent()),
         ],
       ),
     );
@@ -393,7 +636,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         ),
       );
     }
-    
+
     if (_errorMessage.isNotEmpty) {
       return Center(
         child: Column(
@@ -410,7 +653,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         ),
       );
     }
-    
+
     if (!_hasSearched) {
       return const Center(
         child: Column(
@@ -427,7 +670,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         ),
       );
     }
-    
+
     if (_videos.isEmpty) {
       return const Center(
         child: Column(
@@ -444,7 +687,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         ),
       );
     }
-    
+
     return ListView.builder(
       itemCount: _videos.length,
       itemBuilder: (context, index) {
