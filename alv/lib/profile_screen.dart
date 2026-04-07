@@ -2,9 +2,6 @@ import 'package:provider/provider.dart';
 import 'theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'preferiti_screen.dart';
-import 'package:provider/provider.dart';
-import 'theme_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfileScreen extends StatefulWidget {

@@ -99,7 +99,6 @@ class MyAppContent extends StatelessWidget {
           ),
         ),
         cardTheme: CardThemeData(
-          // 👈 CAMBIATO QUI
           color: Colors.grey[800],
           elevation: 2,
         ),
@@ -178,6 +177,7 @@ class SchermataRicerca extends StatefulWidget {
 
 class _SchermataRicercaState extends State<SchermataRicerca> {
   final TextEditingController _controllerTesto = TextEditingController();
+  final TextEditingController _controllerDurata = TextEditingController();
 
   bool _isLoading = false;
   List<dynamic> _videos = [];
@@ -196,18 +196,8 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         int day = int.parse(parts[2]);
 
         const months = [
-          'Gennaio',
-          'Febbraio',
-          'Marzo',
-          'Aprile',
-          'Maggio',
-          'Giugno',
-          'Luglio',
-          'Agosto',
-          'Settembre',
-          'Ottobre',
-          'Novembre',
-          'Dicembre',
+          'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
+          'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
         ];
 
         return '$day ${months[month - 1]} $year';
@@ -224,7 +214,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // Genera ID una volta sola
     final title = video['title']?.toString() ?? 'video';
     final duration = video['duration']?.toString() ?? '0';
     final videoId =
@@ -271,7 +260,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    // Usa lo stesso metodo per generare l'ID
     final title = video['title']?.toString() ?? 'video';
     final duration = video['duration']?.toString() ?? '0';
     final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
@@ -356,7 +344,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     return defaultValue;
   }
 
-  // Funzione per estrarre il valore intero in modo sicuro
   int _getSafeInt(
     Map<String, dynamic> map,
     String key, {
@@ -370,7 +357,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     return defaultValue;
   }
 
-  // Funzione per estrarre la lista in modo sicuro
   List<dynamic> _getSafeList(Map<String, dynamic> map, String key) {
     final value = map[key];
     if (value == null) return [];
@@ -379,30 +365,15 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   }
 
   Widget _buildVideoCard(Map<String, dynamic> video) {
-    // Gestione thumbnail in modo sicuro
-    String thumbnailUrl = video['images'][0]['url'];
+    String thumbnailUrl = '';
+    if (video['images'] != null && video['images'].isNotEmpty) {
+      thumbnailUrl = video['images'][0]['url'] ?? '';
+    }
 
-    // Estrai i campi in modo sicuro
-    final title = _getSafeString(
-      video,
-      'title',
-      defaultValue: 'Titolo non disponibile',
-    );
-    final speakers = _getSafeString(
-      video,
-      'speakers',
-      defaultValue: 'Speaker non disponibile',
-    );
-    final presenterDisplayName = _getSafeString(
-      video,
-      'presenterdisplayname',
-      defaultValue: '',
-    );
-    final description = _getSafeString(
-      video,
-      'description',
-      defaultValue: 'Descrizione non disponibile',
-    );
+    final title = _getSafeString(video, 'title', defaultValue: 'Titolo non disponibile');
+    final speakers = _getSafeString(video, 'speakers', defaultValue: 'Speaker non disponibile');
+    final presenterDisplayName = _getSafeString(video, 'presenterdisplayname', defaultValue: '');
+    final description = _getSafeString(video, 'description', defaultValue: 'Descrizione non disponibile');
     final publishedAt = _getSafeString(video, 'publishedat', defaultValue: '');
     final videoUrl = _getSafeString(video, 'url', defaultValue: '');
     final duration = _getSafeInt(video, 'duration', defaultValue: 0);
@@ -422,7 +393,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Thumbnail
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: thumbnailUrl.isNotEmpty
@@ -471,13 +441,10 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       ),
               ),
               const SizedBox(width: 12),
-
-              // Contenuto testuale
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Titolo
                     Text(
                       title,
                       maxLines: 2,
@@ -488,17 +455,13 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       ),
                     ),
                     const SizedBox(height: 4),
-
-                    // Speaker e durata
                     Row(
                       children: [
                         Icon(Icons.person, size: 12, color: Colors.grey[600]),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            speakers.isNotEmpty
-                                ? speakers
-                                : presenterDisplayName,
+                            speakers.isNotEmpty ? speakers : presenterDisplayName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -520,8 +483,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       ],
                     ),
                     const SizedBox(height: 4),
-
-                    // Data pubblicazione
                     if (publishedAt.isNotEmpty)
                       Row(
                         children: [
@@ -541,8 +502,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                         ],
                       ),
                     const SizedBox(height: 6),
-
-                    // Descrizione
                     Text(
                       description,
                       maxLines: 2,
@@ -550,8 +509,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       style: TextStyle(fontSize: 12, color: Colors.grey[700]),
                     ),
                     const SizedBox(height: 8),
-
-                    // Tags
                     if (tagsList.isNotEmpty)
                       Wrap(
                         spacing: 6,
@@ -561,7 +518,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                             .map((tag) => _buildTagContainer(tag.toString()))
                             .toList(),
                       ),
-                    // Bottone preferiti
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -604,8 +560,20 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
     try {
       String type = "all";
-      final apiUrl =
+      // Chiediamo 10 risultati puliti
+      String apiUrl =
           "https://9ax7s2e799.execute-api.us-east-1.amazonaws.com/dev/search/$type?q=${Uri.encodeComponent(searchString)}&limit=10";
+
+      // Filtro Durata: passiamo i secondi al backend tramite l'URL
+      String durataTesto = _controllerDurata.text.trim();
+      if (durataTesto.isNotEmpty) {
+        int? maxMinuti = int.tryParse(durataTesto);
+        
+        if (maxMinuti != null) {
+          int maxSecondi = maxMinuti * 60; 
+          apiUrl += "&max_duration=$maxSecondi";
+        }
+      }
 
       final response = await http
           .get(Uri.parse(apiUrl))
@@ -613,7 +581,9 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
+        
         setState(() {
+          // L'API ha già fatto il lavoro di filtraggio!
           _videos = data['results'] ?? [];
           _isLoading = false;
         });
@@ -666,6 +636,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   @override
   void dispose() {
     _controllerTesto.dispose();
+    _controllerDurata.dispose();
     super.dispose();
   }
 
@@ -679,7 +650,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         title: const Text('FOCUS-TED'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
-          // Icona profilo (NUOVO)
           IconButton(
             icon: const Icon(Icons.person),
             onPressed: () {
@@ -687,7 +657,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
             },
             tooltip: 'Profilo',
           ),
-          // Mostra l'email dell'utente
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Center(
@@ -697,7 +666,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
               ),
             ),
           ),
-          // Bottone per il logout
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -716,21 +684,42 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       ),
       body: Column(
         children: [
-          // Barra di ricerca
+          // Barra di ricerca + Filtro Durata
           Padding(
             padding: const EdgeInsets.all(20.0),
             child: Column(
               children: [
-                TextField(
-                  controller: _controllerTesto,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    labelText:
-                        'Inserisci titolo, speaker o qualcosa per cercare',
-                    hintText: 'Es. Species',
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                  onSubmitted: (_) => _inviaParola(),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextField(
+                        controller: _controllerTesto,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          labelText: 'Cerca video...',
+                          hintText: 'Es. Species',
+                          prefixIcon: Icon(Icons.search),
+                        ),
+                        onSubmitted: (_) => _inviaParola(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 1,
+                      child: TextField(
+                        controller: _controllerDurata,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          labelText: 'Max min.',
+                          hintText: 'Es. 15',
+                          prefixIcon: Icon(Icons.timer, size: 20),
+                        ),
+                        onSubmitted: (_) => _inviaParola(),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
