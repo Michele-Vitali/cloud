@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,6 +14,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
   String _errorMessage = '';
+  String _successMessage = '';
 
   Future<void> _login() async {
     final email = _emailController.text.trim();
@@ -28,32 +30,97 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
+      _successMessage = '';
     });
 
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      // Se arriva qui, login riuscito! La schermata si chiuderà
-      // Se arriva qui, login riuscito!
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password);
+
+      await userCredential.user?.reload();
+      final updatedUser = FirebaseAuth.instance.currentUser;
+
+      // Controlla se l'email è verificata
+      if (updatedUser == null || !updatedUser.emailVerified) {
+        // Se non è verificata, esci e mostra messaggio di errore
+        await FirebaseAuth.instance.signOut();
+
+        if (mounted) {
+          setState(() {
+            _errorMessage =
+                '❌ Email non verificata!\n\nControlla la tua posta e clicca sul link di verifica ricevuto al momento della registrazione.\n\nSe non trovi l\'email, controlla nella cartella Spam.';
+            _isLoading = false;
+          });
+        }
+        return; // Esce senza chiudere la schermata
+      }
+
+      // Se arriva qui, email verificata → login OK
       if (mounted) {
-        // Forza il rebuild della UI
-        setState(() {
-          _isLoading = false;
-        });
-        // Torna indietro
         await Future.delayed(const Duration(milliseconds: 100));
         Navigator.of(context).pop();
       }
     } on FirebaseAuthException catch (e) {
-      setState(() {
-        _errorMessage = _getErrorMessage(e.code);
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = _getErrorMessage(e.code);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Errore sconosciuto: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+      _successMessage = '';
+    });
+
+    try {
+      // Crea una nuova istanza di GoogleSignIn
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+
+      // Per Web usa signInWithPopup
+      if (const bool.fromEnvironment('dart.library.html')) {
+        // Siamo sul Web
+        GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        await FirebaseAuth.instance.signInWithPopup(googleProvider);
+      } else {
+        // Per mobile (Android/iOS)
+        final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
+        if (googleUser == null) {
+          setState(() {
+            _isLoading = false;
+          });
+          return;
+        }
+
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          idToken: googleAuth.idToken,
+          accessToken: googleAuth.accessToken,
+        );
+
+        await FirebaseAuth.instance.signInWithCredential(credential);
+      }
+
+      if (mounted) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       setState(() {
-        _errorMessage = 'Errore sconosciuto: $e';
+        _errorMessage = 'Errore con Google Sign-In: $e';
         _isLoading = false;
       });
     }
@@ -81,6 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (email.isEmpty || password.isEmpty) {
       setState(() {
         _errorMessage = 'Inserisci email e password';
+        _successMessage = '';
       });
       return;
     }
@@ -88,6 +156,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (password.length < 6) {
       setState(() {
         _errorMessage = 'La password deve essere almeno di 6 caratteri';
+        _successMessage = '';
       });
       return;
     }
@@ -95,28 +164,48 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
+      _successMessage = '';
     });
 
     try {
-      await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      // Registrazione riuscita! Chiudi la schermata
+      // 1) Crea l'utente
+      final userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(email: email, password: password);
+
+      // 2) Invia email di verifica
+      await userCredential.user?.sendEmailVerification();
+
+      // 3) Logout immediato per evitare accesso senza verifica
+      await FirebaseAuth.instance.signOut();
+
+      // 4) Aggiorna UI rimanendo in questa schermata
       if (mounted) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        Navigator.of(context).pop(); // Torna alla schermata precedente
+        setState(() {
+          _isLoading = false;
+          _errorMessage = '';
+          _successMessage =
+              '✅ Registrazione completata!\n\nTi abbiamo inviato una email di verifica a:\n$email\n\nControlla la posta, clicca sul link di verifica e poi effettua l’accesso.';
+        });
+
+        // 5) Svuota solo la password (meglio lasciare l’email)
+        _passwordController.clear();
       }
     } on FirebaseAuthException catch (e) {
-      setState(() {
-        _errorMessage = _getRegisterErrorMessage(e.code);
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = _getRegisterErrorMessage(e.code);
+          _successMessage = '';
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Errore sconosciuto: $e';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Errore sconosciuto: $e';
+          _successMessage = '';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -184,11 +273,44 @@ class _LoginScreenState extends State<LoginScreen> {
                   textAlign: TextAlign.center,
                 ),
               ),
+
+            if (_successMessage.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  _successMessage,
+                  style: const TextStyle(color: Colors.green),
+                  textAlign: TextAlign.center,
+                ),
+              ),
             if (_isLoading)
               const CircularProgressIndicator()
             else
               Column(
                 children: [
+                  OutlinedButton.icon(
+                    onPressed: _signInWithGoogle,
+                    icon: const Icon(Icons.login),
+                    label: const Text('Accedi con Google'),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Separatore
+                  const Row(
+                    children: [
+                      Expanded(child: Divider()),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text('oppure'),
+                      ),
+                      Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
                   ElevatedButton(
                     onPressed: _login,
                     style: ElevatedButton.styleFrom(

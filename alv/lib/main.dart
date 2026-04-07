@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'theme_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
@@ -7,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'login_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'preferiti_screen.dart';
+import 'profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,28 +17,154 @@ void main() async {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  bool _isLoading = true;
+  bool _initialDarkMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedTheme();
+  }
+
+  Future<void> _loadSavedTheme() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('utenti')
+          .doc(user.uid)
+          .get();
+      if (doc.exists) {
+        _initialDarkMode = doc.data()?['darkMode'] ?? false;
+      }
+    }
+    setState(() {
+      _isLoading = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const MaterialApp(
+        home: Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    return ChangeNotifierProvider(
+      create: (context) => ThemeProvider()..setDarkMode(_initialDarkMode),
+      child: const MyAppContent(),
+    );
+  }
+}
+
+class MyAppContent extends StatelessWidget {
+  const MyAppContent({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return MaterialApp(
       title: 'Ricerca Video',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
+        brightness: Brightness.light,
       ),
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          // Se l'utente è loggato, mostra la schermata di ricerca
-          if (snapshot.hasData) {
-            return const SchermataRicerca();
-          }
-          // Altrimenti, mostra la schermata di login
-          return LoginScreen();
-        },
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.deepPurple,
+          brightness: Brightness.dark,
+        ),
+        scaffoldBackgroundColor: Colors.grey[900],
+        appBarTheme: AppBarTheme(
+          backgroundColor: Colors.grey[850],
+          foregroundColor: Colors.white,
+          titleTextStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          // 👈 CAMBIATO QUI
+          color: Colors.grey[800],
+          elevation: 2,
+        ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: Colors.white),
+          bodyMedium: TextStyle(color: Colors.white70),
+          titleLarge: TextStyle(color: Colors.white),
+          titleMedium: TextStyle(color: Colors.white),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white70),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.grey[800],
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+          labelStyle: const TextStyle(color: Colors.white70),
+          hintStyle: const TextStyle(color: Colors.white38),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.deepPurple,
+            foregroundColor: Colors.white,
+          ),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: Colors.white54),
+          ),
+        ),
+        listTileTheme: ListTileThemeData(
+          textColor: Colors.white,
+          iconColor: Colors.white70,
+          tileColor: Colors.grey[800],
+        ),
+        dividerTheme: const DividerThemeData(
+          color: Colors.white24,
+          thickness: 1,
+        ),
       ),
+      themeMode: themeProvider.themeMode,
+      initialRoute: '/',
+      routes: {
+        '/': (context) => StreamBuilder<User?>(
+          stream: FirebaseAuth.instance.authStateChanges(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final user = snapshot.data;
+            if (user != null && user.emailVerified) {
+              return const SchermataRicerca();
+            }
+            return const LoginScreen();
+          },
+        ),
+        '/login': (context) => const LoginScreen(),
+        '/home': (context) => const SchermataRicerca(),
+        '/profilo': (context) => const ProfileScreen(),
+        '/preferiti': (context) => const PreferitiScreen(),
+      },
     );
   }
 }
@@ -550,6 +679,14 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         title: const Text('FOCUS-TED'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          // Icona profilo (NUOVO)
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () {
+              Navigator.pushNamed(context, '/profilo');
+            },
+            tooltip: 'Profilo',
+          ),
           // Mostra l'email dell'utente
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -571,10 +708,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
           IconButton(
             icon: const Icon(Icons.favorite),
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const PreferitiScreen()),
-              );
+              Navigator.pushNamed(context, '/preferiti');
             },
             tooltip: 'Preferiti',
           ),
