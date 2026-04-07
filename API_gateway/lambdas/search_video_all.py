@@ -32,11 +32,16 @@ def lambda_handler(event, context):
                 'body': json.dumps({'error': "Parametro 'q' obbligatorio per la ricerca"})
             }
         
+        # Limite impostato di default a 10 se non specificato
         limit = int(query_params.get('limit', 10))
         limit = min(max(limit, 1), 50)
         
+        # Leggiamo il parametro della durata inviato dall'app Flutter (in secondi)
+        max_duration = query_params.get('max_duration')
+        
         collection = dbconn.get_connection(DB_NAME, COLLECTION_NAME)
         
+        # 1. Costruiamo la base della pipeline (ricerca full-text)
         pipeline = [
             {
                 '$search': {
@@ -50,7 +55,23 @@ def lambda_handler(event, context):
                         ]
                     }
                 }
-            },
+            }
+        ]
+
+        # 2. Aggiungiamo il filtro per la durata SOLO se è stato passato il parametro
+        if max_duration is not None:
+            try:
+                max_duration_int = int(max_duration)
+                pipeline.append({
+                    '$match': {
+                        'duration': {'$lte': max_duration_int}
+                    }
+                })
+            except ValueError:
+                logger.warning(f"Valore max_duration non valido ignorato: {max_duration}")
+
+        # 3. Completiamo la pipeline con proiezione e limite
+        pipeline.extend([
             {
                 '$project': {
                     'title': 1,
@@ -66,7 +87,7 @@ def lambda_handler(event, context):
                 }
             },
             {'$limit': limit}
-        ]
+        ])
         
         results = list(collection.aggregate(pipeline))
         
