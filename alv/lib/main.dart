@@ -559,10 +559,9 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     });
 
     try {
-      String type = "all";
       // Chiediamo 10 risultati puliti
       String apiUrl =
-          "https://9ax7s2e799.execute-api.us-east-1.amazonaws.com/dev/search/$type?q=${Uri.encodeComponent(searchString)}&limit=10";
+          "https://9blumqjohk.execute-api.us-east-1.amazonaws.com/videos?q=${Uri.encodeComponent(searchString)}&limit=10";
 
       // Filtro Durata: passiamo i secondi al backend tramite l'URL
       String durataTesto = _controllerDurata.text.trim();
