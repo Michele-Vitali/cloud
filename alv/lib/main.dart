@@ -11,6 +11,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'preferiti_screen.dart';
 import 'profile_screen.dart';
 
+// NUOVE IMPORTAZIONI PER MAPPE E GPS
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
@@ -559,11 +563,9 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     });
 
     try {
-      // Chiediamo 10 risultati puliti
       String apiUrl =
           "https://9blumqjohk.execute-api.us-east-1.amazonaws.com/videos?q=${Uri.encodeComponent(searchString)}&limit=10";
 
-      // Filtro Durata: passiamo i secondi al backend tramite l'URL
       String durataTesto = _controllerDurata.text.trim();
       if (durataTesto.isNotEmpty) {
         int? maxMinuti = int.tryParse(durataTesto);
@@ -582,7 +584,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         final Map<String, dynamic> data = jsonDecode(response.body);
         
         setState(() {
-          // L'API ha già fatto il lavoro di filtraggio!
           _videos = data['results'] ?? [];
           _isLoading = false;
         });
@@ -631,6 +632,156 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       print('Errore caricamento preferiti: $e');
     }
   }
+
+  // --- NUOVI METODI PER IL CALCOLO PERCORSO ---
+
+  Future<void> _calcolaDurataConAws(String destinazione, String profilo, BuildContext dialogContext) async {
+    try {
+      // 1. Controllo permessi GPS
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception("I servizi di localizzazione sono disabilitati.");
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception("Permessi di localizzazione negati.");
+        }
+      }
+
+      // 2. Ottieni posizione attuale
+      Position position = await Geolocator.getCurrentPosition();
+      double startLat = position.latitude;
+      double startLng = position.longitude;
+
+      // 3. Converti indirizzo destinazione in coordinate
+      List<Location> locations = await locationFromAddress(destinazione);
+      if (locations.isEmpty) {
+        throw Exception("Impossibile trovare le coordinate per questo indirizzo.");
+      }
+      double endLat = locations.first.latitude;
+      double endLng = locations.first.longitude;
+
+      // 4. Chiama la tua nuova API AWS
+      // NOTA: Usa l'URL esatto della tua API Lambda!
+      final String awsApiUrl = 'https://c59pqjng2e.execute-api.us-east-1.amazonaws.com/dev/route-duration?startLat=$startLat&startLng=$startLng&endLat=$endLat&endLng=$endLng&profile=$profilo';
+
+      final response = await http.get(Uri.parse(awsApiUrl));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        double durationSecs = (data['duration'] is int) ? (data['duration'] as int).toDouble() : data['duration'];
+        int durationMins = (durationSecs / 60).ceil();
+
+        // 5. Aggiorna il textfield
+        setState(() {
+          _controllerDurata.text = durationMins.toString();
+        });
+
+        // Chiude il dialog se tutto va bene
+        if (mounted) Navigator.pop(dialogContext);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Durata stimata: $durationMins minuti!')),
+        );
+
+      } else {
+        throw Exception("Errore Server AWS: ${response.statusCode}");
+      }
+
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore: ${e.toString()}'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _mostraDialogCalcoloPercorso() {
+    final TextEditingController destController = TextEditingController();
+    String selectedProfile = 'driving-car';
+    
+    // SPOSTATO QUI: Fuori dallo StatefulBuilder in modo che mantenga il suo 
+    // stato tra un setStateDialog e l'altro senza resettarsi!
+    bool isCalculating = false; 
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text('Calcola tempo viaggio'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Inserisci la destinazione. Calcoleremo la durata partendo dalla tua posizione.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: destController,
+                    decoration: const InputDecoration(
+                      labelText: 'Indirizzo (es. Duomo Milano)',
+                      prefixIcon: Icon(Icons.place),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: selectedProfile,
+                    decoration: const InputDecoration(
+                      labelText: 'Mezzo di trasporto',
+                      prefixIcon: Icon(Icons.directions),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'driving-car', child: Text('Automobile')),
+                      DropdownMenuItem(value: 'cycling-regular', child: Text('Bicicletta')),
+                      DropdownMenuItem(value: 'foot-walking', child: Text('A piedi')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) setStateDialog(() => selectedProfile = val);
+                    },
+                  ),
+                  // Ora Dart sa che isCalculating può cambiare, niente più Dead Code!
+                  if (isCalculating)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16.0),
+                      child: CircularProgressIndicator(),
+                    )
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Annulla'),
+                ),
+                ElevatedButton(
+                  onPressed: isCalculating ? null : () async {
+                    if (destController.text.isEmpty) return;
+                    
+                    // Aggiorna lo stato per mostrare la rotellina
+                    setStateDialog(() => isCalculating = true);
+                    
+                    await _calcolaDurataConAws(destController.text, selectedProfile, dialogContext);
+                    
+                    // Se c'è un errore e il dialog non si è chiuso, fermiamo la rotellina
+                    if (mounted) {
+                      setStateDialog(() => isCalculating = false);
+                    }
+                  },
+                  child: const Text('Calcola'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  // --- FINE NUOVI METODI ---
 
   @override
   void dispose() {
@@ -683,7 +834,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       ),
       body: Column(
         children: [
-          // Barra di ricerca + Filtro Durata
+          // Barra di ricerca + Filtro Durata + Pulsante Percorso
           Padding(
             padding: const EdgeInsets.all(20.0),
             child: Column(
@@ -704,18 +855,30 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       ),
                     ),
                     const SizedBox(width: 10),
+                    // SEZIONE MODIFICATA: Input durata e pulsante percorso uniti
                     Expanded(
-                      flex: 1,
-                      child: TextField(
-                        controller: _controllerDurata,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'Max min.',
-                          hintText: 'Es. 15',
-                          prefixIcon: Icon(Icons.timer, size: 20),
-                        ),
-                        onSubmitted: (_) => _inviaParola(),
+                      flex: 2, 
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _controllerDurata,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                labelText: 'Max min.',
+                                hintText: 'Es. 15',
+                              ),
+                              onSubmitted: (_) => _inviaParola(),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.map_outlined),
+                            color: Colors.deepPurple,
+                            tooltip: 'Calcola tempo in base alla destinazione',
+                            onPressed: _mostraDialogCalcoloPercorso,
+                          ),
+                        ],
                       ),
                     ),
                   ],
