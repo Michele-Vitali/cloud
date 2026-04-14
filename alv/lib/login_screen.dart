@@ -88,10 +88,17 @@ class _LoginScreenState extends State<LoginScreen> {
       // Crea una nuova istanza di GoogleSignIn
       final GoogleSignIn googleSignIn = GoogleSignIn();
 
+      // Forza il logout da Google per chiedere sempre la selezione dell'account
+      await googleSignIn.signOut();
+
       // Per Web usa signInWithPopup
       if (const bool.fromEnvironment('dart.library.html')) {
         // Siamo sul Web
         GoogleAuthProvider googleProvider = GoogleAuthProvider();
+
+        // Per il web, forza la selezione dell'account
+        googleProvider.setCustomParameters({'prompt': 'select_account'});
+
         await FirebaseAuth.instance.signInWithPopup(googleProvider);
       } else {
         // Per mobile (Android/iOS)
