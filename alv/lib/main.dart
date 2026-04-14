@@ -10,6 +10,7 @@ import 'login_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'preferiti_screen.dart';
 import 'profile_screen.dart';
+import 'video_webview_screen.dart';
 
 // NUOVE IMPORTAZIONI PER MAPPE E GPS
 import 'package:geolocator/geolocator.dart';
@@ -58,9 +59,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const MaterialApp(
-        home: Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -102,10 +101,7 @@ class MyAppContent extends StatelessWidget {
             fontWeight: FontWeight.w500,
           ),
         ),
-        cardTheme: CardThemeData(
-          color: Colors.grey[800],
-          elevation: 2,
-        ),
+        cardTheme: CardThemeData(color: Colors.grey[800], elevation: 2),
         textTheme: const TextTheme(
           bodyLarge: TextStyle(color: Colors.white),
           bodyMedium: TextStyle(color: Colors.white70),
@@ -200,8 +196,18 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         int day = int.parse(parts[2]);
 
         const months = [
-          'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-          'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre',
+          'Gennaio',
+          'Febbraio',
+          'Marzo',
+          'Aprile',
+          'Maggio',
+          'Giugno',
+          'Luglio',
+          'Agosto',
+          'Settembre',
+          'Ottobre',
+          'Novembre',
+          'Dicembre',
         ];
 
         return '$day ${months[month - 1]} $year';
@@ -374,10 +380,26 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       thumbnailUrl = video['images'][0]['url'] ?? '';
     }
 
-    final title = _getSafeString(video, 'title', defaultValue: 'Titolo non disponibile');
-    final speakers = _getSafeString(video, 'speakers', defaultValue: 'Speaker non disponibile');
-    final presenterDisplayName = _getSafeString(video, 'presenterdisplayname', defaultValue: '');
-    final description = _getSafeString(video, 'description', defaultValue: 'Descrizione non disponibile');
+    final title = _getSafeString(
+      video,
+      'title',
+      defaultValue: 'Titolo non disponibile',
+    );
+    final speakers = _getSafeString(
+      video,
+      'speakers',
+      defaultValue: 'Speaker non disponibile',
+    );
+    final presenterDisplayName = _getSafeString(
+      video,
+      'presenterdisplayname',
+      defaultValue: '',
+    );
+    final description = _getSafeString(
+      video,
+      'description',
+      defaultValue: 'Descrizione non disponibile',
+    );
     final publishedAt = _getSafeString(video, 'publishedat', defaultValue: '');
     final videoUrl = _getSafeString(video, 'url', defaultValue: '');
     final duration = _getSafeInt(video, 'duration', defaultValue: 0);
@@ -388,7 +410,20 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       child: InkWell(
         onTap: () {
           if (videoUrl.isNotEmpty) {
-            print('Apri video: $videoUrl');
+            final embedUrl = videoUrl.replaceFirst(
+              "https://www.ted.com/talks/",
+              "https://embed.ted.com/talks/",
+            );
+
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => VideoWebViewScreen(
+                  url: embedUrl,
+                  title: title, // <-- questo è il titolo già estratto sopra
+                ),
+              ),
+            );
           }
         },
         borderRadius: BorderRadius.circular(12),
@@ -465,7 +500,9 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            speakers.isNotEmpty ? speakers : presenterDisplayName,
+                            speakers.isNotEmpty
+                                ? speakers
+                                : presenterDisplayName,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -569,9 +606,9 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       String durataTesto = _controllerDurata.text.trim();
       if (durataTesto.isNotEmpty) {
         int? maxMinuti = int.tryParse(durataTesto);
-        
+
         if (maxMinuti != null) {
-          int maxSecondi = maxMinuti * 60; 
+          int maxSecondi = maxMinuti * 60;
           apiUrl += "&max_duration=$maxSecondi";
         }
       }
@@ -582,7 +619,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = jsonDecode(response.body);
-        
+
         setState(() {
           _videos = data['results'] ?? [];
           _isLoading = false;
@@ -635,7 +672,11 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
   // --- NUOVI METODI PER IL CALCOLO PERCORSO ---
 
-  Future<void> _calcolaDurataConAws(String destinazione, String profilo, BuildContext dialogContext) async {
+  Future<void> _calcolaDurataConAws(
+    String destinazione,
+    String profilo,
+    BuildContext dialogContext,
+  ) async {
     try {
       // 1. Controllo permessi GPS
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -658,20 +699,25 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       // 3. Converti indirizzo destinazione in coordinate
       List<Location> locations = await locationFromAddress(destinazione);
       if (locations.isEmpty) {
-        throw Exception("Impossibile trovare le coordinate per questo indirizzo.");
+        throw Exception(
+          "Impossibile trovare le coordinate per questo indirizzo.",
+        );
       }
       double endLat = locations.first.latitude;
       double endLng = locations.first.longitude;
 
       // 4. Chiama la tua nuova API AWS
       // NOTA: Usa l'URL esatto della tua API Lambda!
-      final String awsApiUrl = 'https://c59pqjng2e.execute-api.us-east-1.amazonaws.com/dev/route-duration?startLat=$startLat&startLng=$startLng&endLat=$endLat&endLng=$endLng&profile=$profilo';
+      final String awsApiUrl =
+          'https://c59pqjng2e.execute-api.us-east-1.amazonaws.com/dev/route-duration?startLat=$startLat&startLng=$startLng&endLat=$endLat&endLng=$endLng&profile=$profilo';
 
       final response = await http.get(Uri.parse(awsApiUrl));
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        double durationSecs = (data['duration'] is int) ? (data['duration'] as int).toDouble() : data['duration'];
+        double durationSecs = (data['duration'] is int)
+            ? (data['duration'] as int).toDouble()
+            : data['duration'];
         int durationMins = (durationSecs / 60).ceil();
 
         // 5. Aggiorna il textfield
@@ -685,15 +731,16 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Durata stimata: $durationMins minuti!')),
         );
-
       } else {
         throw Exception("Errore Server AWS: ${response.statusCode}");
       }
-
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Errore: ${e.toString()}'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Errore: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -702,10 +749,10 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   void _mostraDialogCalcoloPercorso() {
     final TextEditingController destController = TextEditingController();
     String selectedProfile = 'driving-car';
-    
-    // SPOSTATO QUI: Fuori dallo StatefulBuilder in modo che mantenga il suo 
+
+    // SPOSTATO QUI: Fuori dallo StatefulBuilder in modo che mantenga il suo
     // stato tra un setStateDialog e l'altro senza resettarsi!
-    bool isCalculating = false; 
+    bool isCalculating = false;
 
     showDialog(
       context: context,
@@ -737,12 +784,22 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       prefixIcon: Icon(Icons.directions),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 'driving-car', child: Text('Automobile')),
-                      DropdownMenuItem(value: 'cycling-regular', child: Text('Bicicletta')),
-                      DropdownMenuItem(value: 'foot-walking', child: Text('A piedi')),
+                      DropdownMenuItem(
+                        value: 'driving-car',
+                        child: Text('Automobile'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'cycling-regular',
+                        child: Text('Bicicletta'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'foot-walking',
+                        child: Text('A piedi'),
+                      ),
                     ],
                     onChanged: (val) {
-                      if (val != null) setStateDialog(() => selectedProfile = val);
+                      if (val != null)
+                        setStateDialog(() => selectedProfile = val);
                     },
                   ),
                   // Ora Dart sa che isCalculating può cambiare, niente più Dead Code!
@@ -750,7 +807,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                     const Padding(
                       padding: EdgeInsets.only(top: 16.0),
                       child: CircularProgressIndicator(),
-                    )
+                    ),
                 ],
               ),
               actions: [
@@ -759,19 +816,25 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                   child: const Text('Annulla'),
                 ),
                 ElevatedButton(
-                  onPressed: isCalculating ? null : () async {
-                    if (destController.text.isEmpty) return;
-                    
-                    // Aggiorna lo stato per mostrare la rotellina
-                    setStateDialog(() => isCalculating = true);
-                    
-                    await _calcolaDurataConAws(destController.text, selectedProfile, dialogContext);
-                    
-                    // Se c'è un errore e il dialog non si è chiuso, fermiamo la rotellina
-                    if (mounted) {
-                      setStateDialog(() => isCalculating = false);
-                    }
-                  },
+                  onPressed: isCalculating
+                      ? null
+                      : () async {
+                          if (destController.text.isEmpty) return;
+
+                          // Aggiorna lo stato per mostrare la rotellina
+                          setStateDialog(() => isCalculating = true);
+
+                          await _calcolaDurataConAws(
+                            destController.text,
+                            selectedProfile,
+                            dialogContext,
+                          );
+
+                          // Se c'è un errore e il dialog non si è chiuso, fermiamo la rotellina
+                          if (mounted) {
+                            setStateDialog(() => isCalculating = false);
+                          }
+                        },
                   child: const Text('Calcola'),
                 ),
               ],
@@ -857,7 +920,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                     const SizedBox(width: 10),
                     // SEZIONE MODIFICATA: Input durata e pulsante percorso uniti
                     Expanded(
-                      flex: 2, 
+                      flex: 2,
                       child: Row(
                         children: [
                           Expanded(
