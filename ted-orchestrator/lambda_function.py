@@ -4,12 +4,19 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import boto3
 
-MONGO_URI = "mongodb+srv://ted_user:ICxk4Gv2fRmTFzq5@cluster0.yxb8l1z.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+# Recupero la stringa di connessione dalle variabili d'ambiente
+MONGO_URI = os.environ.get("MONGO_URI")
+
+if not MONGO_URI:
+    raise ValueError("ERRORE: La variabile d'ambiente MONGO_URI non è impostata!")
+
 MONGO_DB = "ted_video_db"
 MONGO_COLLECTION = "videos"
 
 BATCH_JOB_QUEUE = "ted-sub-job-queue"
 BATCH_JOB_DEFINITION = "ted-sub-job-def"
+
+# ... il resto del codice rimane invariato
 
 mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = mongo_client[MONGO_DB]
