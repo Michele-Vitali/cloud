@@ -48,7 +48,7 @@ def lambda_handler(event, context):
                     'index': 'default_search_index',
                     'compound': {
                         'should': [
-                            {'text': {'query': search_term, 'path': 'title', 'score': {'boost': {'value': 3}}}},
+                            {'text': {'query': search_term, 'path': 'talk_title', 'score': {'boost': {'value': 3}}}},
                             {'text': {'query': search_term, 'path': 'speakers', 'score': {'boost': {'value': 2}}}},
                             {'text': {'query': search_term, 'path': 'tags', 'score': {'boost': {'value': 1.5}}}},
                             {'text': {'query': search_term, 'path': 'description', 'score': {'boost': {'value': 1}}}}
@@ -74,14 +74,14 @@ def lambda_handler(event, context):
         pipeline.extend([
             {
                 '$project': {
-                    'title': 1,
+                    'talk_title': 1,
                     'description': 1,
                     'speakers': 1,
                     'presenterdisplayname': 1,
                     'url': 1,
                     'tags': 1,
                     'duration': 1,
-                    'publishedat': 1,
+                    'publishedAt': 1,
                     'images': 1,
                     'score': {'$meta': 'searchScore'}
                 }

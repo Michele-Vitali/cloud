@@ -184,6 +184,8 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   String _errorMessage = '';
   bool _hasSearched = false;
   Set<String> _preferitiIds = {};
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   String _formatData(String dataString) {
     try {
@@ -639,11 +641,84 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     }
   }
 
-  void _inviaParola() {
-    String parolaInserita = _controllerTesto.text.trim();
-    if (parolaInserita.isNotEmpty) {
+  Future<void> _updateHistory(String keyword) async{
+    final user = _auth.currentUser;
+    if(user == null){
+      return;
+    }
 
-      _callApi(parolaInserita);
+    final docRef = _firestore.collection('utenti').doc(user.uid);
+    final doc = await docRef.get();
+
+    final ricerche = doc.data()?['cronologia_ricerche'] as List? ?? [];
+
+    int index = ricerche.indexWhere((r) => r['keyword'] == keyword);
+
+    if(index != -1){
+      final nuovoCount = (ricerche[index]['count'] ?? 0) + 1;
+      ricerche[index]['count'] = nuovoCount;
+      ricerche[index]['timestamp'] = Timestamp.now();
+
+      await docRef.set({
+        'cronologia_ricerche': ricerche,
+      }, SetOptions(merge: true)
+      );
+    } else{
+      await docRef.set({
+        'cronologia_ricerche': FieldValue.arrayUnion([
+          {
+            'keyword': keyword,
+            'timestamp': Timestamp.now(),
+            'count': 1,
+          }
+        ])
+      }, SetOptions(merge: true)
+      );
+    }
+  }
+
+  // Queste due funzioni si potrebbero estrarre e rendere generali...
+
+  Future<void> _updateViewed(String video_id) async {
+    final user = _auth.currentUser;
+    if(user == null) return;
+
+    final docRef = _firestore.collection('utenti').doc(user.uid);
+    final doc = await docRef.get();
+
+    final visualizzazioni = doc.data()?['cronologia_visualizzazioni'] as List? ?? [];
+
+    int index = visualizzazioni.indexWhere((v) => v['video_id'] == video_id);
+
+    if(index != -1) {
+      final nuovoCount = (visualizzazioni[index]['count'] ?? 0) + 1;
+      final nuoviTimestamp = List<Timestamp>.from(visualizzazioni[index]['timestamp'] ?? []);
+      nuoviTimestamp.add(Timestamp.now());
+      
+      visualizzazioni[index]['count'] = nuovoCount;
+      visualizzazioni[index]['timestamp'] = nuoviTimestamp;
+
+      await docRef.set({
+        'cronologia_visualizzazioni': visualizzazioni,
+      }, SetOptions(merge: true));
+    } else {
+      await docRef.set({
+        'cronologia_visualizzazioni': FieldValue.arrayUnion([
+          {
+            'video_id': video_id,
+            'timestamp': [Timestamp.now()],  // Array di timestamp
+            'count': 1,
+          }
+        ])
+      }, SetOptions(merge: true));
+    }
+}
+
+  void _inviaParola() {
+    String keyword = _controllerTesto.text.trim();
+    if (keyword.isNotEmpty) {
+      _updateHistory(keyword);
+      _callApi(keyword);
     } else {
       setState(() {
         _errorMessage = "Per favore, inserisci una parola da cercare!";
@@ -859,7 +934,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   @override
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      //_caricaPreferiti();
+      _caricaPreferiti();
     });
     return Scaffold(
       appBar: AppBar(
