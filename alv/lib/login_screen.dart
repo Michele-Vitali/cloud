@@ -77,59 +77,43 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _signInWithGoogle() async {
+  Future<User?> _signInWithGoogle() async {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
       _successMessage = '';
     });
 
+    final FirebaseAuth _auth = FirebaseAuth.instance;
+
+    final GoogleSignIn _googleSignIn = GoogleSignIn();
+
     try {
-      // Crea una nuova istanza di GoogleSignIn
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-
-      // Forza il logout da Google per chiedere sempre la selezione dell'account
-      await googleSignIn.signOut();
-
-      // Per Web usa signInWithPopup
-      if (const bool.fromEnvironment('dart.library.html')) {
-        // Siamo sul Web
-        GoogleAuthProvider googleProvider = GoogleAuthProvider();
-
-        // Per il web, forza la selezione dell'account
-        googleProvider.setCustomParameters({'prompt': 'select_account'});
-
-        await FirebaseAuth.instance.signInWithPopup(googleProvider);
-      } else {
-        // Per mobile (Android/iOS)
-        final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+        final googleUser = await _googleSignIn.signIn();
 
         if (googleUser == null) {
           setState(() {
             _isLoading = false;
           });
-          return;
+          return null;
         }
 
-        final GoogleSignInAuthentication googleAuth =
-            await googleUser.authentication;
+        final googleAuth = await googleUser.authentication;
+
         final credential = GoogleAuthProvider.credential(
-          idToken: googleAuth.idToken,
           accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
         );
 
-        await FirebaseAuth.instance.signInWithCredential(credential);
-      }
+        final userCredential = await _auth.signInWithCredential(credential);        
 
-      if (mounted) {
-        await Future.delayed(const Duration(milliseconds: 100));
-        Navigator.of(context).pop();
-      }
+        return userCredential.user;
     } catch (e) {
       setState(() {
         _errorMessage = 'Errore con Google Sign-In: $e';
         _isLoading = false;
       });
+      return null;
     }
   }
 
@@ -296,7 +280,13 @@ class _LoginScreenState extends State<LoginScreen> {
               Column(
                 children: [
                   OutlinedButton.icon(
-                    onPressed: _signInWithGoogle,
+                    onPressed: () async {
+                      User? user = await _signInWithGoogle();
+
+                      if(user != null){
+                        Navigator.of(context).pop();
+                      }
+                    },
                     icon: const Icon(Icons.login),
                     label: const Text('Accedi con Google'),
                     style: OutlinedButton.styleFrom(

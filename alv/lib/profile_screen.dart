@@ -1,4 +1,5 @@
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'theme_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,45 +16,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final user = FirebaseAuth.instance.currentUser;
   bool _isLoading = false;
   bool _isDarkMode = false;
-  bool _salvaCronologia = true;
-  bool _notifichePush = true;
   String _linguaSelezionata = 'Italiano';
 
-  Future<void> _saveSettings() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    await FirebaseFirestore.instance.collection('utenti').doc(user.uid).set({
-      'darkMode': _isDarkMode,
-      'salvaCronologia': _salvaCronologia,
-      'notifichePush': _notifichePush,
-      'lingua': _linguaSelezionata,
-    }, SetOptions(merge: true));
-  }
-
   Future<void> _loadSettings() async {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return;
+    // Prendi le preferenze dell'utente dai dati in locale.
+    final prefs = await SharedPreferences.getInstance();
 
-  final doc = await FirebaseFirestore.instance
-      .collection('utenti')
-      .doc(user.uid)
-      .get();
-
-  if (doc.exists) {
     setState(() {
-      // SOLO queste impostazioni - NIENTE tema
-      _salvaCronologia = doc.data()?['salvaCronologia'] ?? true;
-      _notifichePush = doc.data()?['notifichePush'] ?? true;
-      _linguaSelezionata = doc.data()?['lingua'] ?? 'Italiano';
+      _isDarkMode = prefs.getBool('darkmode') ?? false;
+      _linguaSelezionata = prefs.getString('lingua') ?? 'Italiano';
     });
   }
-}
+
+  Future<void> _saveLocalSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    setState(() {
+      prefs.setBool('isDarkMode', _isDarkMode);
+      prefs.setString('lingua', _linguaSelezionata);
+    });
+  }
 
   @override
   void initState() {
     super.initState();
-    _loadSettings(); // Questo carica le altre impostazioni MA NON il tema
+    _loadSettings();
   }
 
   Future<void> _changePassword() async {
@@ -171,19 +158,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               children: [
-                // Sezione account (esistente)
+                // Sezione account
                 _buildAccountSection(),
 
-                // Sezione contenuti (esistente)
+                // Sezione contenuti
                 _buildContentSection(),
 
-                // 👇 NUOVA SEZIONE PREFERENZE
+                // Sezione preferenze 
                 _buildPreferencesSection(),
 
-                // Sezione sicurezza (esistente)
+                // Sezione sicurezza
                 _buildSecuritySection(),
 
-                // Versione app (esistente)
+                // Versione app
                 const SizedBox(height: 16),
                 Center(
                   child: Text(
@@ -278,43 +265,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 value: themeProvider.isDarkMode,
                 onChanged: (value) {
                   themeProvider.setDarkMode(value);
-                  _saveSettings();
+                  _saveLocalSettings();
                 },
                 secondary: const Icon(Icons.dark_mode),
               );
             },
-          ),
-
-          const Divider(),
-
-          // Cronologia ricerche
-          SwitchListTile(
-            title: const Text('Salva cronologia ricerche'),
-            subtitle: const Text('Memorizza le tue ricerche'),
-            value: _salvaCronologia,
-            onChanged: (value) {
-              setState(() {
-                _salvaCronologia = value;
-              });
-              _saveSettings();
-            },
-            secondary: const Icon(Icons.history),
-          ),
-
-          const Divider(),
-
-          // Notifiche push
-          SwitchListTile(
-            title: const Text('Notifiche push'),
-            subtitle: const Text('Ricevi suggerimenti di nuovi TED Talk'),
-            value: _notifichePush,
-            onChanged: (value) {
-              setState(() {
-                _notifichePush = value;
-              });
-              _saveSettings();
-            },
-            secondary: const Icon(Icons.notifications),
           ),
 
           const Divider(),
@@ -390,7 +345,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   setState(() {
                     _linguaSelezionata = value!;
                   });
-                  _saveSettings();
+                  _saveLocalSettings();
                   Navigator.pop(context);
                 },
               ),
@@ -404,7 +359,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   setState(() {
                     _linguaSelezionata = value!;
                   });
-                  _saveSettings();
+                  _saveLocalSettings();
                   Navigator.pop(context);
                 },
               ),

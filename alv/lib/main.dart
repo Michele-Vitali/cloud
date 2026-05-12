@@ -642,6 +642,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   void _inviaParola() {
     String parolaInserita = _controllerTesto.text.trim();
     if (parolaInserita.isNotEmpty) {
+
       _callApi(parolaInserita);
     } else {
       setState(() {
@@ -653,7 +654,9 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
   Future<void> _caricaPreferiti() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null){
+      return;
+    }
 
     try {
       final doc = await FirebaseFirestore.instance
@@ -856,7 +859,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   @override
   Widget build(BuildContext context) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _caricaPreferiti();
+      //_caricaPreferiti();
     });
     return Scaffold(
       appBar: AppBar(
