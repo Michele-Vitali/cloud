@@ -379,12 +379,12 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   Widget _buildVideoCard(Map<String, dynamic> video) {
     String thumbnailUrl = '';
     if (video['images'] != null && video['images'].isNotEmpty) {
-      thumbnailUrl = video['images'][0]['url'] ?? '';
+      thumbnailUrl = video['images'][0] ?? '';
     }
 
     final title = _getSafeString(
       video,
-      'title',
+      'talk_title',
       defaultValue: 'Titolo non disponibile',
     );
     final speakers = _getSafeString(
