@@ -78,6 +78,7 @@ class MyAppContent extends StatelessWidget {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Ricerca Video',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
@@ -422,7 +423,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
               MaterialPageRoute(
                 builder: (context) => VideoWebViewScreen(
                   url: embedUrl,
-                  title: title, // <-- questo è il titolo già estratto sopra
+                  title: title,
                 ),
               ),
             );
