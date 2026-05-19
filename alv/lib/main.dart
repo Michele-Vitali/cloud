@@ -227,25 +227,32 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final title = video['title']?.toString() ?? 'video';
-    final duration = video['duration']?.toString() ?? '0';
-    final videoId =
-        "${title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_$duration";
+    final videoId = video['_id'];
+
+    if(_isPreferito(video)){
+      ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Video già presente nei preferiti!')));
+        return;
+    }
 
     try {
       await FirebaseFirestore.instance
           .collection('utenti')
           .doc(user.uid)
-          .collection('preferiti')
-          .doc(videoId)
           .set({
-            'title': video['title'] ?? 'Titolo non disponibile',
-            'speakers': video['speakers'] ?? 'Speaker non disponibile',
-            'thumbnailUrl': video['images']?[0]?['url'] ?? '',
-            'duration': video['duration'] ?? 0,
-            'url': video['url'] ?? '',
-            'savedAt': DateTime.now(),
-          });
+            'preferiti': FieldValue.arrayUnion([
+              {
+                'video_id': video['_id'],
+                'talk_title': video['talk_title'] ?? 'Titolo non disponibile',
+                'speakers': video['speakers'] ?? 'Speaker non disponibile',
+                'thumbnailUrl': video['images']?[0] ?? '',
+                'duration': int.tryParse(video['duration']?.toString() ?? '0') ?? 0,
+                'url': video['url'] ?? '',
+                'savedAt': DateTime.now(),
+              }
+            ])
+          }, SetOptions(merge: true));
 
       setState(() {
         _preferitiIds.add(videoId);
@@ -262,34 +269,40 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
   }
 
   bool _isPreferito(Map<String, dynamic> video) {
-    final title = video['title']?.toString() ?? 'video';
-    final duration = video['duration']?.toString() ?? '0';
-    final videoId =
-        "${title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_$duration";
-    return _preferitiIds.contains(videoId);
+    return _preferitiIds.contains(video['_id']);
   }
 
   Future<void> _rimuoviPreferito(Map<String, dynamic> video) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final title = video['title']?.toString() ?? 'video';
-    final duration = video['duration']?.toString() ?? '0';
-    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
-    final videoId =
-        "${title.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_')}_$duration$timestamp";
+    final videoId = video['_id'];
 
     try {
-      await FirebaseFirestore.instance
+      final docRef = FirebaseFirestore.instance
           .collection('utenti')
-          .doc(user.uid)
-          .collection('preferiti')
-          .doc(videoId)
-          .delete();
+          .doc(user.uid);
 
-      setState(() {
-        _preferitiIds.remove(videoId);
-      });
+      // Prendi il documento corrente
+      final doc = await docRef.get();
+      final data = doc.data();
+      final List<dynamic> preferiti = data?['preferiti'] ?? [];
+
+      // Trova l'elemento da rimuovere
+      final videoDaRimuovere = preferiti.firstWhere(
+        (video) => video['videoId'] == videoId,
+        orElse: () => null,
+      );
+
+      if (videoDaRimuovere != null) {
+        await docRef.update({
+          'preferiti': FieldValue.arrayRemove([videoDaRimuovere])
+        });
+        
+        setState(() {
+          _preferitiIds.remove(videoId);
+        });
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -417,7 +430,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
               "https://www.ted.com/talks/",
               "https://embed.ted.com/talks/",
             );
-
+            
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -427,6 +440,9 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                 ),
               ),
             );
+
+            _updateViewed(video['_id']);
+
           }
         },
         borderRadius: BorderRadius.circular(12),
@@ -738,18 +754,18 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       final doc = await FirebaseFirestore.instance
           .collection('utenti')
           .doc(user.uid)
-          .collection('preferiti')
           .get();
 
+      final data = doc.data();
+      final List<dynamic> preferiti = data?['preferiti'] ?? [];
+
       setState(() {
-        _preferitiIds = doc.docs.map((d) => d.id).toSet();
+        _preferitiIds = preferiti.map((video) => video['video_id']?.toString() ?? '').toSet();
       });
     } catch (e) {
       print('Errore caricamento preferiti: $e');
     }
   }
-
-  // --- NUOVI METODI PER IL CALCOLO PERCORSO ---
 
   Future<void> _calcolaDurataConAws(
     String destinazione,
@@ -923,7 +939,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       },
     );
   }
-  // --- FINE NUOVI METODI ---
 
   @override
   void dispose() {
