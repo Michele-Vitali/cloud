@@ -19,10 +19,12 @@ class PreferitiScreen extends StatelessWidget {
         title: const Text('I tuoi preferiti'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: StreamBuilder<DocumentSnapshot>(
+      body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('utenti')
             .doc(user.uid)
+            .collection('preferiti')
+            .orderBy('addedAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -33,24 +35,9 @@ class PreferitiScreen extends StatelessWidget {
             return Center(child: Text('Errore: ${snapshot.error}'));
           }
 
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.favorite_border, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('Nessun preferito ancora'),
-                  Text('Aggiungi video cliccando sul cuore ❤️'),
-                ],
-              ),
-            );
-          }
+          final docs = snapshot.data?.docs ?? [];
 
-          final data = snapshot.data!.data() as Map<String, dynamic>;
-          final List<dynamic> preferiti = data['preferiti'] ?? [];
-
-          if (preferiti.isEmpty) {
+          if (docs.isEmpty) {
             return const Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -65,9 +52,11 @@ class PreferitiScreen extends StatelessWidget {
           }
 
           return ListView.builder(
-            itemCount: preferiti.length,
+            itemCount: docs.length,
             itemBuilder: (context, index) {
-              final video = preferiti[index] as Map<String, dynamic>;
+              final video = docs[index].data() as Map<String, dynamic>;
+              final docId = docs[index].id;
+              
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: ListTile(
@@ -95,14 +84,13 @@ class PreferitiScreen extends StatelessWidget {
                   trailing: IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
                     onPressed: () async {
-                      // Rimuovi dall'array
-                      final docRef = FirebaseFirestore.instance
+                      // Rimuovi il documento dalla sottocollezione
+                      await FirebaseFirestore.instance
                           .collection('utenti')
-                          .doc(user.uid);
-                      
-                      await docRef.update({
-                        'preferiti': FieldValue.arrayRemove([video])
-                      });
+                          .doc(user.uid)
+                          .collection('preferiti')
+                          .doc(docId)
+                          .delete();
                       
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(

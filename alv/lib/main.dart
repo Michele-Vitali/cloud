@@ -240,19 +240,16 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       await FirebaseFirestore.instance
           .collection('utenti')
           .doc(user.uid)
+          .collection('preferiti')
+          .doc(video['_id'])
           .set({
-            'preferiti': FieldValue.arrayUnion([
-              {
-                'video_id': video['_id'],
                 'talk_title': video['talk_title'] ?? 'Titolo non disponibile',
                 'speakers': video['speakers'] ?? 'Speaker non disponibile',
                 'thumbnailUrl': video['images']?[0] ?? '',
                 'duration': int.tryParse(video['duration']?.toString() ?? '0') ?? 0,
                 'url': video['url'] ?? '',
-                'savedAt': DateTime.now(),
-              }
-            ])
-          }, SetOptions(merge: true));
+                'addedAt': DateTime.now(),
+              });
 
       setState(() {
         _preferitiIds.add(videoId);
@@ -279,30 +276,16 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     final videoId = video['_id'];
 
     try {
-      final docRef = FirebaseFirestore.instance
+      await FirebaseFirestore.instance
           .collection('utenti')
-          .doc(user.uid);
-
-      // Prendi il documento corrente
-      final doc = await docRef.get();
-      final data = doc.data();
-      final List<dynamic> preferiti = data?['preferiti'] ?? [];
-
-      // Trova l'elemento da rimuovere
-      final videoDaRimuovere = preferiti.firstWhere(
-        (video) => video['videoId'] == videoId,
-        orElse: () => null,
-      );
-
-      if (videoDaRimuovere != null) {
-        await docRef.update({
-          'preferiti': FieldValue.arrayRemove([videoDaRimuovere])
-        });
+          .doc(user.uid)
+          .collection('preferiti')
+          .doc(video['_id'])
+          .delete();
         
         setState(() {
           _preferitiIds.remove(videoId);
         });
-      }
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -582,20 +565,18 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         IconButton(
-                          onPressed: () {
+                          onPressed: () async {
                             if (_isPreferito(video)) {
-                              _rimuoviPreferito(video);
+                              await _rimuoviPreferito(video);
                             } else {
-                              _aggiungiPreferito(video);
+                              await _aggiungiPreferito(video);
                             }
                           },
                           icon: Icon(
                             _isPreferito(video)
                                 ? Icons.favorite
                                 : Icons.favorite_border,
-                            color: _isPreferito(video)
-                                ? Colors.red
-                                : Colors.grey,
+                            color: _isPreferito(video) ? Colors.red : Colors.grey,
                           ),
                         ),
                       ],
@@ -664,33 +645,20 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
       return;
     }
 
-    final docRef = _firestore.collection('utenti').doc(user.uid);
+    final docRef = _firestore.collection('utenti').doc(user.uid).collection('cronologia_ricerche').doc(keyword.toLowerCase());
     final doc = await docRef.get();
 
-    final ricerche = doc.data()?['cronologia_ricerche'] as List? ?? [];
-
-    int index = ricerche.indexWhere((r) => r['keyword'] == keyword);
-
-    if(index != -1){
-      final nuovoCount = (ricerche[index]['count'] ?? 0) + 1;
-      ricerche[index]['count'] = nuovoCount;
-      ricerche[index]['timestamp'] = Timestamp.now();
-
+    if(doc.exists){
       await docRef.set({
-        'cronologia_ricerche': ricerche,
-      }, SetOptions(merge: true)
-      );
+        'count': FieldValue.increment(1),
+        'lastSearched': DateTime.now(),
+      }, SetOptions(merge: true));
     } else{
       await docRef.set({
-        'cronologia_ricerche': FieldValue.arrayUnion([
-          {
-            'keyword': keyword,
-            'timestamp': Timestamp.now(),
-            'count': 1,
-          }
-        ])
-      }, SetOptions(merge: true)
-      );
+        'keyword': keyword,
+        'count': 1,
+        'lastSearched': DateTime.now(),
+      }, SetOptions(merge: true));
     }
   }
 
@@ -700,33 +668,24 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     final user = _auth.currentUser;
     if(user == null) return;
 
-    final docRef = _firestore.collection('utenti').doc(user.uid);
+    final docRef = _firestore.collection('utenti').doc(user.uid).collection('cronologia_visualizzazioni').doc(video_id);
     final doc = await docRef.get();
 
-    final visualizzazioni = doc.data()?['cronologia_visualizzazioni'] as List? ?? [];
-
-    int index = visualizzazioni.indexWhere((v) => v['video_id'] == video_id);
-
-    if(index != -1) {
-      final nuovoCount = (visualizzazioni[index]['count'] ?? 0) + 1;
-      final nuoviTimestamp = List<Timestamp>.from(visualizzazioni[index]['timestamp'] ?? []);
-      nuoviTimestamp.add(Timestamp.now());
-      
-      visualizzazioni[index]['count'] = nuovoCount;
-      visualizzazioni[index]['timestamp'] = nuoviTimestamp;
+    if(doc.exists){
+      final data = doc.data()!;
+      final newCount = (data['count'] ?? 0) + 1;
+      final lastViewed = DateTime.now();
 
       await docRef.set({
-        'cronologia_visualizzazioni': visualizzazioni,
+        'count': newCount,
+        'lastViewed': lastViewed,
       }, SetOptions(merge: true));
+
     } else {
       await docRef.set({
-        'cronologia_visualizzazioni': FieldValue.arrayUnion([
-          {
-            'video_id': video_id,
-            'timestamp': [Timestamp.now()],  // Array di timestamp
-            'count': 1,
-          }
-        ])
+        'video_id': video_id,
+        'count': 1,
+        'lastViewed': DateTime.now(),
       }, SetOptions(merge: true));
     }
 }
@@ -751,16 +710,14 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     }
 
     try {
-      final doc = await FirebaseFirestore.instance
+      final snapshot = await FirebaseFirestore.instance
           .collection('utenti')
           .doc(user.uid)
+          .collection('preferiti')
           .get();
 
-      final data = doc.data();
-      final List<dynamic> preferiti = data?['preferiti'] ?? [];
-
       setState(() {
-        _preferitiIds = preferiti.map((video) => video['video_id']?.toString() ?? '').toSet();
+        _preferitiIds = snapshot.docs.map((doc) => doc.id).toSet();
       });
     } catch (e) {
       print('Errore caricamento preferiti: $e');
@@ -1012,7 +969,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // SEZIONE MODIFICATA: Input durata e pulsante percorso uniti
                     Expanded(
                       flex: 2,
                       child: Row(
