@@ -56,31 +56,33 @@ class PreferitiScreen extends StatelessWidget {
             itemBuilder: (context, index) {
               final video = docs[index].data() as Map<String, dynamic>;
               final docId = docs[index].id;
-              
+
               return Card(
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 child: ListTile(
                   leading:
                       video['thumbnailUrl'] != null &&
-                              video['thumbnailUrl'].toString().isNotEmpty
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.network(
-                                video['thumbnailUrl'].toString(),
-                                width: 60,
-                                height: 45,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) =>
-                                    const Icon(Icons.video_library),
-                              ),
-                            )
-                          : const Icon(Icons.video_library, size: 45),
+                          video['thumbnailUrl'].toString().isNotEmpty
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            video['thumbnailUrl'].toString(),
+                            width: 60,
+                            height: 45,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const Icon(Icons.video_library),
+                          ),
+                        )
+                      : const Icon(Icons.video_library, size: 45),
                   title: Text(
                     video['talk_title'] ?? 'Titolo non disponibile',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  subtitle: Text(video['speakers'] ?? 'Speaker non disponibile'),
+                  subtitle: Text(
+                    video['speakers'] ?? 'Speaker non disponibile',
+                  ),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete, color: Colors.red),
                     onPressed: () async {
@@ -91,10 +93,12 @@ class PreferitiScreen extends StatelessWidget {
                           .collection('preferiti')
                           .doc(docId)
                           .delete();
-                      
+
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Rimosso dai preferiti')),
+                          const SnackBar(
+                            content: Text('Rimosso dai preferiti'),
+                          ),
                         );
                       }
                     },
@@ -113,7 +117,7 @@ class PreferitiScreen extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (context) =>
-                              VideoWebViewScreen(url: embedUrl, title: title),
+                              VideoWebViewScreen(videoId: video['_id']),
                         ),
                       );
                     }

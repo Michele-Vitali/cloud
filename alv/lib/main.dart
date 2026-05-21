@@ -229,11 +229,11 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
     final videoId = video['_id'];
 
-    if(_isPreferito(video)){
-      ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Video già presente nei preferiti!')));
-        return;
+    if (_isPreferito(video)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Video già presente nei preferiti!')),
+      );
+      return;
     }
 
     try {
@@ -243,13 +243,13 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
           .collection('preferiti')
           .doc(video['_id'])
           .set({
-                'talk_title': video['talk_title'] ?? 'Titolo non disponibile',
-                'speakers': video['speakers'] ?? 'Speaker non disponibile',
-                'thumbnailUrl': video['images']?[0] ?? '',
-                'duration': int.tryParse(video['duration']?.toString() ?? '0') ?? 0,
-                'url': video['url'] ?? '',
-                'addedAt': DateTime.now(),
-              });
+            'talk_title': video['talk_title'] ?? 'Titolo non disponibile',
+            'speakers': video['speakers'] ?? 'Speaker non disponibile',
+            'thumbnailUrl': video['images']?[0] ?? '',
+            'duration': int.tryParse(video['duration']?.toString() ?? '0') ?? 0,
+            'url': video['url'] ?? '',
+            'addedAt': DateTime.now(),
+          });
 
       setState(() {
         _preferitiIds.add(videoId);
@@ -282,10 +282,10 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
           .collection('preferiti')
           .doc(video['_id'])
           .delete();
-        
-        setState(() {
-          _preferitiIds.remove(videoId);
-        });
+
+      setState(() {
+        _preferitiIds.remove(videoId);
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -413,19 +413,14 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
               "https://www.ted.com/talks/",
               "https://embed.ted.com/talks/",
             );
-            
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => VideoWebViewScreen(
-                  url: embedUrl,
-                  title: title,
-                ),
+                builder: (context) => VideoWebViewScreen(videoId: video['_id']),
               ),
             );
 
             _updateViewed(video['_id']);
-
           }
         },
         borderRadius: BorderRadius.circular(12),
@@ -576,7 +571,9 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
                             _isPreferito(video)
                                 ? Icons.favorite
                                 : Icons.favorite_border,
-                            color: _isPreferito(video) ? Colors.red : Colors.grey,
+                            color: _isPreferito(video)
+                                ? Colors.red
+                                : Colors.grey,
                           ),
                         ),
                       ],
@@ -639,21 +636,25 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
     }
   }
 
-  Future<void> _updateHistory(String keyword) async{
+  Future<void> _updateHistory(String keyword) async {
     final user = _auth.currentUser;
-    if(user == null){
+    if (user == null) {
       return;
     }
 
-    final docRef = _firestore.collection('utenti').doc(user.uid).collection('cronologia_ricerche').doc(keyword.toLowerCase());
+    final docRef = _firestore
+        .collection('utenti')
+        .doc(user.uid)
+        .collection('cronologia_ricerche')
+        .doc(keyword.toLowerCase());
     final doc = await docRef.get();
 
-    if(doc.exists){
+    if (doc.exists) {
       await docRef.set({
         'count': FieldValue.increment(1),
         'lastSearched': DateTime.now(),
       }, SetOptions(merge: true));
-    } else{
+    } else {
       await docRef.set({
         'keyword': keyword,
         'count': 1,
@@ -666,12 +667,16 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
   Future<void> _updateViewed(String video_id) async {
     final user = _auth.currentUser;
-    if(user == null) return;
+    if (user == null) return;
 
-    final docRef = _firestore.collection('utenti').doc(user.uid).collection('cronologia_visualizzazioni').doc(video_id);
+    final docRef = _firestore
+        .collection('utenti')
+        .doc(user.uid)
+        .collection('cronologia_visualizzazioni')
+        .doc(video_id);
     final doc = await docRef.get();
 
-    if(doc.exists){
+    if (doc.exists) {
       final data = doc.data()!;
       final newCount = (data['count'] ?? 0) + 1;
       final lastViewed = DateTime.now();
@@ -680,7 +685,6 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         'count': newCount,
         'lastViewed': lastViewed,
       }, SetOptions(merge: true));
-
     } else {
       await docRef.set({
         'video_id': video_id,
@@ -688,7 +692,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
         'lastViewed': DateTime.now(),
       }, SetOptions(merge: true));
     }
-}
+  }
 
   void _inviaParola() {
     String keyword = _controllerTesto.text.trim();
@@ -705,7 +709,7 @@ class _SchermataRicercaState extends State<SchermataRicerca> {
 
   Future<void> _caricaPreferiti() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null){
+    if (user == null) {
       return;
     }
 
