@@ -11,10 +11,8 @@ from mcp.server.transport_security import TransportSecuritySettings
 # --- MongoDB Atlas connection ---
 db_user = "app_user"
 db_pwd = "peJiXi217sdfODCA"
-
 MONGO_URI = (
-    f"mongodb+srv://{db_user}:{db_pwd}"
-    "@cluster0.yxb8l1z.mongodb.net/?appName=Cluster0"
+    f"mongodb+srv://{db_user}:{db_pwd}@cluster0.yxb8l1z.mongodb.net/?appName=Cluster0"
 )
 
 client = AsyncIOMotorClient(MONGO_URI)
@@ -39,7 +37,7 @@ async def search_by_tag(tag: str, limit: int = 5) -> list[dict]:
     """Search TEDx talks that contain a given tag (e.g. 'culture', 'media')."""
     cursor = collection.find(
         {"tags": tag.lower()},
-        {"_id": 0, "talk_title": 1, "speakers": 1, "url": 1, "tags": 1, "duration": 1},
+        {"_id": 0, "title": 1, "speakers": 1, "url": 1, "tags": 1, "duration": 1},
     ).limit(limit)
     return await cursor.to_list(length=limit)
 
@@ -49,23 +47,22 @@ async def search_by_speaker(speaker: str, limit: int = 5) -> list[dict]:
     """Find talks by speaker name (case-insensitive partial match)."""
     cursor = collection.find(
         {"speakers": {"$regex": speaker, "$options": "i"}},
-        {"_id": 0, "talk_title": 1, "speakers": 1, "url": 1, "publishedAt": 1},
+        {"_id": 0, "title": 1, "speakers": 1, "url": 1, "publishedAt": 1},
     ).limit(limit)
     return await cursor.to_list(length=limit)
 
 
 @mcp.tool()
 async def search_by_keyword(keyword: str, limit: int = 5) -> list[dict]:
-    """Search talks by keyword in title, description or transcription."""
+    """Search talks by keyword in title or description."""
     cursor = collection.find(
         {
             "$or": [
-                {"talk_title": {"$regex": keyword, "$options": "i"}},
+                {"title": {"$regex": keyword, "$options": "i"}},
                 {"description": {"$regex": keyword, "$options": "i"}},
-                {"transcript_text": {"$regex": keyword, "$options": "i"}}
             ]
         },
-        {"_id": 0, "talk_title": 1, "speakers": 1, "url": 1, "description": 1},
+        {"_id": 0, "title": 1, "speakers": 1, "url": 1, "description": 1},
     ).limit(limit)
     return await cursor.to_list(length=limit)
 
@@ -120,18 +117,7 @@ async def get_schema() -> str:
 async def get_stats() -> str:
     """Basic stats about the TEDx dataset."""
     total = await collection.count_documents({})
-    pipeline = [
-        {
-            "$group": {
-                "_id": None,
-                "avg_duration": {"$avg": "$duration"}
-            }
-        }
-    ]
-    result = await collection.aggregate(pipeline).to_list(length=1)
-    avg_duration = result[0]["avg_duration"] if result else 0
-    return f"""Total talks in dataset: {total}\n
-               Average duration: {avg_duration}"""
+    return f"Total talks in dataset: {total}"
 
 
 # ============================================================

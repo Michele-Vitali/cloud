@@ -12,7 +12,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 # CHANGE THIS to your server URL
-SERVER_URL = "https://54.146.49.184:8443/mcp"
+SERVER_URL = "https://100.48.34.103:8443/mcp"
 
 # Build an SSL context that does NOT verify certs (demo only!)
 ssl_context = ssl.create_default_context()
