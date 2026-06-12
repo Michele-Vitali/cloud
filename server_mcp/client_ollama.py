@@ -14,7 +14,7 @@ from mcp.client.streamable_http import streamablehttp_client
 
 # --- Config ---
 SERVER_URL = "https://100.48.34.103:8443/mcp"
-OLLAMA_MODEL = "mistral:7b" 
+OLLAMA_MODEL = "llama3.2:3b" 
 
 
 def insecure_httpx_client(headers=None, timeout=None, auth=None):
@@ -71,26 +71,42 @@ async def chat(session: ClientSession, user_message: str):
     mcp_tools = (await session.list_tools()).tools
     ollama_tools = mcp_tools_to_ollama(mcp_tools)
 
-    messages = [{"role": "user", "content": user_message}]
+     # ============================================================
+    # SYSTEM PROMPT - FORZA L'USO DEI TOOLS
+    # ============================================================
+    system_prompt = """Sei un assistente specializzato nella ricerca di video TED.
+
+    REGOLE ASSOLUTE (NON VIOLARLE MAI):
     
-    # System prompt migliorato
-    system_prompt = """Sei un assistente che DEVE usare i tools per cercare video.
-
-REGOLE IMPORTANTI:
-1. Quando l'utente chiede video, usa SEMPRE il tool appropriato (search_by_tag o search_by_keyword)
-2. Dopo aver ricevuto i risultati, MOSTRA TUTTI i video che il tool ha restituito
-3. Per ogni video, includi: titolo, speaker e URL
-4. Se il tool restituisce 5 video, devi mostrare 5 video
-5. NON limitarti a mostrare solo il primo risultato
-6. NON inventare mai video che non esistono
-
-Esempio di risposta corretta:
-"Ho trovato 3 video:
-1. Titolo1 - Speaker1 - URL1
-2. Titolo2 - Speaker2 - URL2
-3. Titolo3 - Speaker3 - URL3"
-
-Formatta SEMPRE la risposta come una lista numerata con titolo, speaker e URL."""
+    1. QUANDO UTILIZZARE I TOOLS:
+       Sempre! Non devi ritornare o cercare dati esterni al nostro sistema, quindi usa sempre i tools
+       così da richiedere sempre dati presenti nel nostro database.
+    
+    2. COME USARE I TOOLS:
+       - Chiama IMMEDIATAMENTE il tool appropriato
+       - NON scrivere codice
+       - NON spiegare come fare
+       - NON inventare video
+       - NON usare YouTube o altre fonti esterne
+    
+    3. DOPO AVER RICEVUTO I RISULTATI DEL TOOL:
+       - Mostra TUTTI i video ricevuti
+       - Se il tool dice "NESSUN RISULTATO" o una lista vuota, rispondi: "Nessun video trovato su questo argomento"
+    
+    4. VIETATO:
+       - Rispondere senza aver chiamato un tool
+       - Inventare video
+       - Usare conoscenza personale su TED
+    
+    Ora, per ogni domanda, segui queste regole alla lettera."""
+    
+    # ============================================================
+    # COSTRUZIONE DEI MESSAGGI
+    # ============================================================
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ]
     
     messages.insert(0, {"role": "system", "content": system_prompt})
 
